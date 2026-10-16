@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.97"
+repository = "https://github.com/fopwoc/migr"
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+env_logger = { version = "0.11.11", default-features = false, features = ["auto-color", "humantime"] }
+log = "0.4.34"
+serde = { version = "1.0.229", features = ["derive"] }
+tempfile = "3.27.0"
+toml = "1.1.8"
+
+[profile.release]
+lto = true
+strip = true
