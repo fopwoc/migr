@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "Carries your Minecraft configs from one Prism instance to the next with git"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [dependencies]

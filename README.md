@@ -22,7 +22,7 @@ Old instances are never touched, so they still work as a fallback.
 brew install fopwoc/tap/migr
 ```
 
-On Linux, build it with `cargo install --path crates/migr`. You also need `git`.
+The Homebrew build is for Apple Silicon Macs. Anywhere else, build it with `cargo install --path crates/migr`. You also need `git`.
 
 ## Setup
 
@@ -79,3 +79,6 @@ Sync is best effort. Being offline never stops the game; the push is retried aft
 - Repository: `~/.local/share/migr/repo.git`
 - Machine config: `~/.config/migr/config.toml`, with `prism_dir`, `repo` and `links`, all optional
 - `LOG_LEVEL=debug` shows every git command migr runs
+
+> [!NOTE]
+> This project contains AI-generated code. See [AI_USAGE.md](AI_USAGE.md) for details.

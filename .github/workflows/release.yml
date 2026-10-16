@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    outputs:
+      download_url: ${{ steps.publish.outputs.download_url }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must be semantic versions without a prefix."
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release commit must be reachable from main."
+            exit 1
+          fi
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Package
+        id: package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          archive="$(./scripts/package.sh "$RUNNER_TEMP/dist")"
+          if [[ "$(basename "$archive")" != "migr-${TAG}-macos.tar.gz" ]]; then
+            echo "Built $(basename "$archive"), which does not match release tag $TAG."
+            exit 1
+          fi
+
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$archive" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Create commit-list release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          previous_tag="$(
+            git tag --merged "${TAG}^" --sort=-version:refname --list |
+              grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' |
+              head -n 1 || true
+          )"
+
+          {
+            echo "## Changes"
+            echo
+            if [[ -n "$previous_tag" ]]; then
+              git log --pretty='- %s (`%h`)' "${previous_tag}..${TAG}"
+            else
+              git log --pretty='- %s (`%h`)' "$TAG"
+            fi
+          } > "$RUNNER_TEMP/release-notes.md"
+
+      - name: Create GitHub release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          gh release create "$TAG" "$ARCHIVE" \
+            --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+
+          asset_name="$(basename "$ARCHIVE")"
+          download_url="$(
+            gh release view "$TAG" \
+              --json assets \
+              --jq ".assets[] | select(.name == \"$asset_name\") | .url"
+          )"
+          echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
+
+  notify-homebrew-tap:
+    needs: release
+    if: vars.HOMEBREW_TAP_REPOSITORY != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Dispatch release to Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ github.ref_name }}
+          DOWNLOAD_URL: ${{ needs.release.outputs.download_url }}
+          SHA256: ${{ needs.release.outputs.sha256 }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "HOMEBREW_TAP_TOKEN is required when HOMEBREW_TAP_REPOSITORY is set."
+            exit 1
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg sha256 "$SHA256" \
+            --arg homepage "https://github.com/${SOURCE_REPOSITORY}" \
+            '{
+              event_type: "update-formula",
+              client_payload: {
+                formula_name: "migr",
+                version: $version,
+                url: $url,
+                sha256: $sha256,
+                description: "Carry Minecraft configs between Prism instances with git",
+                homepage: $homepage,
+                binary: "migr"
+              }
+            }' |
+            gh api \
+              --method POST \
+              "repos/${TAP_REPOSITORY}/dispatches" \
+              --input -
