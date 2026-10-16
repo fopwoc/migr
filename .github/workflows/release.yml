@@ -17,9 +17,6 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
-    outputs:
-      download_url: ${{ steps.publish.outputs.download_url }}
-      sha256: ${{ steps.package.outputs.sha256 }}
 
     steps:
       - name: Check out repository
@@ -60,7 +57,6 @@ jobs:
           fi
 
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(shasum -a 256 "$archive" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Create commit-list release notes
         env:
@@ -83,7 +79,6 @@ jobs:
           } > "$RUNNER_TEMP/release-notes.md"
 
       - name: Create GitHub release
-        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -93,54 +88,9 @@ jobs:
             --title "$TAG" \
             --notes-file "$RUNNER_TEMP/release-notes.md"
 
-          asset_name="$(basename "$ARCHIVE")"
-          download_url="$(
-            gh release view "$TAG" \
-              --json assets \
-              --jq ".assets[] | select(.name == \"$asset_name\") | .url"
-          )"
-          echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
-
-  notify-homebrew-tap:
+  homebrew-tap:
     needs: release
-    if: vars.HOMEBREW_TAP_REPOSITORY != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Dispatch release to Homebrew tap
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
-          SOURCE_REPOSITORY: ${{ github.repository }}
-          VERSION: ${{ github.ref_name }}
-          DOWNLOAD_URL: ${{ needs.release.outputs.download_url }}
-          SHA256: ${{ needs.release.outputs.sha256 }}
-        run: |
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "HOMEBREW_TAP_TOKEN is required when HOMEBREW_TAP_REPOSITORY is set."
-            exit 1
-          fi
-
-          jq -n \
-            --arg version "$VERSION" \
-            --arg url "$DOWNLOAD_URL" \
-            --arg sha256 "$SHA256" \
-            --arg homepage "https://github.com/${SOURCE_REPOSITORY}" \
-            '{
-              event_type: "update-formula",
-              client_payload: {
-                formula_name: "migr",
-                version: $version,
-                url: $url,
-                sha256: $sha256,
-                description: "Carry Minecraft configs between Prism instances with git",
-                homepage: $homepage,
-                binary: "migr"
-              }
-            }' |
-            gh api \
-              --method POST \
-              "repos/${TAP_REPOSITORY}/dispatches" \
-              --input -
+    uses: ./.github/workflows/tap.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit

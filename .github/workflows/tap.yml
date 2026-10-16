@@ -1,0 +1,64 @@
+name: Homebrew tap
+
+# Called by the release, and runnable by hand to resend a release the tap missed.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish to the tap
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Dispatch release to Homebrew tap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ -z "$TAP_REPOSITORY" || -z "$TAP_TOKEN" ]]; then
+            echo "Set the HOMEBREW_TAP_REPOSITORY repository variable and the HOMEBREW_TAP_TOKEN secret."
+            exit 1
+          fi
+
+          asset_name="migr-${TAG}-macos.tar.gz"
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$asset_name" \
+            --dir "$RUNNER_TEMP"
+          sha256="$(sha256sum "$RUNNER_TEMP/$asset_name" | awk '{print $1}')"
+
+          jq -n \
+            --arg version "$TAG" \
+            --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${asset_name}" \
+            --arg sha256 "$sha256" \
+            --arg homepage "https://github.com/${GITHUB_REPOSITORY}" \
+            '{
+              event_type: "update-formula",
+              client_payload: {
+                formula_name: "migr",
+                version: $version,
+                url: $url,
+                sha256: $sha256,
+                description: "Carry Minecraft configs between Prism instances with git",
+                homepage: $homepage,
+                binary: "migr"
+              }
+            }' |
+            GH_TOKEN="$TAP_TOKEN" gh api \
+              --method POST \
+              "repos/${TAP_REPOSITORY}/dispatches" \
+              --input -
