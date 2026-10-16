@@ -18,6 +18,8 @@ pub use pending::PendingFork;
 
 use crate::{git::Git, utils::fs::write_atomic};
 
+const IGNORED: [&str; 1] = [".DS_Store"];
+
 /// migr's own git repository: one branch per instance, plus `pack/<branch>` with the pack's untouched files.
 pub struct Store {
     dir: PathBuf,
@@ -42,7 +44,9 @@ impl Store {
             dir.display()
         );
         log::info!("repository at {}", dir.display());
-        Ok(Self::at(dir))
+        let store = Self::at(dir);
+        store.ensure_excludes()?;
+        Ok(store)
     }
 
     pub fn create(dir: &Path, remote: Option<&str>) -> Result<Self> {
@@ -63,6 +67,7 @@ impl Store {
         ensure!(status.success(), "git could not create the repository");
 
         let store = Self::at(dir);
+        store.ensure_excludes()?;
         for (key, value) in [
             // Hooks commit with nobody at the keyboard to type a passphrase.
             ("commit.gpgsign", "false"),
@@ -85,6 +90,36 @@ impl Store {
         }
         log::info!("created repository at {}", dir.display());
         Ok(store)
+    }
+
+    /// Files the OS drops into tracked folders, kept out without relying on the user's global gitignore.
+    fn ensure_excludes(&self) -> Result<()> {
+        let path = self.dir.join("info/exclude");
+        let current = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+            Err(error) => {
+                return Err(error).with_context(|| format!("cannot read {}", path.display()));
+            }
+        };
+        let missing: Vec<&str> = IGNORED
+            .iter()
+            .copied()
+            .filter(|pattern| !current.lines().any(|line| line.trim() == *pattern))
+            .collect();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        fs::create_dir_all(self.dir.join("info"))?;
+        let mut text = current;
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        for pattern in missing {
+            text.push_str(pattern);
+            text.push('\n');
+        }
+        write_atomic(&path, &text)
     }
 
     fn at(dir: &Path) -> Self {

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::{Result, ensure};
 
 use super::Context;
@@ -8,6 +10,7 @@ pub fn run(
     id: &InstanceId,
     paths: Vec<TrackedPath>,
     from: Option<&InstanceId>,
+    pack: Option<&Path>,
 ) -> Result<()> {
     let store = context.store()?;
     store.ensure_no_pending()?;
@@ -29,22 +32,22 @@ pub fn run(
     }
     let new_paths: Vec<&str> = new.iter().map(TrackedPath::as_str).collect();
 
-    // The files as they are now become the pack's own, which is right for an instance you have not
-    // changed them in yet. Without that, the next fork would have no base to merge them against.
+    // The pack's own versions are the base the next fork merges against. Without a pristine copy,
+    // the current files stand in, which is right for an instance you have not changed them in yet.
+    let pack_dir = pack.unwrap_or(&game_dir);
+    ensure!(pack_dir.is_dir(), "{} is not a folder", pack_dir.display());
+    let message = format!("pack files for {}", new_paths.join(", "));
     let pack_commit = store.snapshot(
-        &game_dir,
+        pack_dir,
         new_paths.iter().copied(),
         Some(&branch.pack()),
         Some(&branch.pack()),
-        &format!("pack files for {}", new_paths.join(", ")),
+        &message,
     )?;
     store.set_ref(&branch.pack(), &pack_commit)?;
-    // The branch already has these exact files on disk, so the merge result is known without a merge.
-    checkout.stage_paths(&new_paths)?;
-    checkout.commit_merge(
-        &pack_commit,
-        &format!("pack files for {}", new_paths.join(", ")),
-    )?;
+    // The branch takes the pack's versions in a merge commit; your own versions follow as a normal commit.
+    checkout.take_from(&pack_commit, &new_paths)?;
+    checkout.commit_merge(&pack_commit, &message)?;
 
     let source = from.map(|from| prism.instance(from)).transpose()?;
     if let Some(source) = &source {

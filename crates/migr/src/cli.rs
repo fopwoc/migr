@@ -39,6 +39,9 @@ pub enum Command {
         /// Take your version of the paths from this instance instead of the current files.
         #[arg(long, value_name = "INSTANCE")]
         from: Option<InstanceId>,
+        /// A pristine .minecraft of the same pack version, for paths you already changed or added.
+        #[arg(long, value_name = "DIR")]
+        pack: Option<PathBuf>,
     },
     /// Write a tracked branch into an instance whose folder name differs from it.
     Link {

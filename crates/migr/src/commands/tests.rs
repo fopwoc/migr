@@ -219,6 +219,7 @@ fn track_takes_a_forgotten_file_from_the_old_instance() {
         &"new".parse().unwrap(),
         vec!["config/NEI".parse().unwrap()],
         Some(&"old".parse().unwrap()),
+        None,
     )
     .unwrap();
 
@@ -297,4 +298,57 @@ fn unknown_instances_cannot_launch_with_hooks() {
     machine.instance("stray", 0, &[]);
     assert!(machine.hook(HookPhase::Pre, "stray").is_err());
     machine.hook(HookPhase::Post, "stray").unwrap();
+}
+
+#[test]
+fn tracking_an_added_mod_with_the_pack_keeps_it_through_forks() {
+    let machine = Machine::new();
+    machine.init(None);
+    machine.instance("old", 0, &[("options.txt", PACK_OPTIONS)]);
+    machine.new_instance("old");
+    // A mod you added yourself; the pristine pack has no such file.
+    machine.write("old", "mods/neat.jar", "jar");
+    let pristine = machine.root.path().join("pristine");
+    fs::create_dir_all(&pristine).unwrap();
+    fs::write(pristine.join("options.txt"), PACK_OPTIONS).unwrap();
+
+    track::run(
+        &machine.context,
+        &"old".parse().unwrap(),
+        vec!["mods/neat.jar".parse().unwrap()],
+        None,
+        Some(&pristine),
+    )
+    .unwrap();
+    machine.instance("new", 0, &[("options.txt", PACK_OPTIONS)]);
+    machine.fork("old", "new").unwrap();
+
+    assert_eq!(machine.read("new", "mods/neat.jar"), "jar");
+}
+
+#[test]
+fn os_junk_stays_out_of_the_repository() {
+    let machine = Machine::new();
+    machine.init(None);
+    machine.instance(
+        "gtnh",
+        0,
+        &[("options.txt", PACK_OPTIONS), ("screenshots/a.png", "png")],
+    );
+    machine.write("gtnh", "screenshots/.DS_Store", "junk");
+    new::run(
+        &machine.context,
+        &"gtnh".parse().unwrap(),
+        None,
+        vec!["screenshots".parse().unwrap()],
+    )
+    .unwrap();
+
+    let store = machine.context.store().unwrap();
+    let files = store
+        .git()
+        .run(["ls-tree", "-r", "--name-only", "refs/heads/gtnh"])
+        .unwrap();
+    assert!(files.contains("screenshots/a.png"));
+    assert!(!files.contains(".DS_Store"), "{files}");
 }

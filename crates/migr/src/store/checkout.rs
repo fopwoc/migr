@@ -61,10 +61,6 @@ impl<'s> Checkout<'s> {
         stage(&self.git, &self.game_dir, &paths)
     }
 
-    pub fn stage_paths(&self, paths: &[&str]) -> Result<()> {
-        stage(&self.git, &self.game_dir, paths)
-    }
-
     pub fn commit(&self, message: &str) -> Result<bool> {
         if self.git.check(["diff", "--cached", "--quiet"])? {
             return Ok(false);
@@ -73,6 +69,19 @@ impl<'s> Checkout<'s> {
             .run(["commit", "--quiet", "--no-verify", "-m", message])?;
         log::debug!("committed {} on {}", message, self.branch);
         Ok(true)
+    }
+
+    /// Puts `commit`'s versions of `paths` into the index only, leaving the files on disk alone.
+    pub fn take_from(&self, commit: &str, paths: &[&str]) -> Result<()> {
+        let mut args = vec!["ls-tree", "-r", "-z", commit, "--"];
+        args.extend(paths);
+        let entries = self.git.run(args)?;
+        if entries.is_empty() {
+            return Ok(());
+        }
+        self.git
+            .run_with_input(["update-index", "-z", "--index-info"], &entries)
+            .map(drop)
     }
 
     /// Commits the index as a merge of HEAD and `other`, for merges whose result is already known.

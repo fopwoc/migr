@@ -1,8 +1,9 @@
 use std::{
     env,
     ffi::OsStr,
+    io::Write,
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Output},
+    process::{Command, ExitStatus, Output, Stdio},
 };
 
 use anyhow::{Context, Result, bail};
@@ -37,6 +38,37 @@ impl Git {
         S: AsRef<OsStr>,
     {
         let output = self.output(args)?;
+        if !output.status.success() {
+            bail!("{}", failure(&output));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_owned())
+    }
+
+    /// Like [`Git::run`], with `input` fed to git's stdin.
+    pub fn run_with_input<I, S>(&self, args: I, input: &str) -> Result<String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let mut command = self.command();
+        command
+            .env("GIT_LITERAL_PATHSPECS", "1")
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        log::debug!("{command:?}");
+        let mut child = command
+            .spawn()
+            .context("cannot run git; is it installed?")?;
+        child
+            .stdin
+            .take()
+            .context("git has no stdin")?
+            .write_all(input.as_bytes())?;
+        let output = child.wait_with_output()?;
         if !output.status.success() {
             bail!("{}", failure(&output));
         }

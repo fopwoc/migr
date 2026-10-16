@@ -51,6 +51,8 @@ Forgot to track something? From the new instance, take your version of it from t
 migr track <new instance> config/NEI --from <old instance>
 ```
 
+For paths you already changed, or added yourself (a mod jar, a resource pack), pass `--pack <a fresh .minecraft>`. Otherwise the current files count as the pack's own, and the next fork would drop files the new pack doesn't ship.
+
 ## Another machine
 
 ```sh
@@ -68,7 +70,7 @@ Sync is best effort. Being offline never stops the game; the push is retried aft
 | `init [remote]` | Create the repository, or clone it |
 | `new <instance>` | Start tracking an instance |
 | `fork <from> <to>` | Carry your files into a new pack version |
-| `track <instance> <path>... [--from <instance>]` | Track more paths |
+| `track <instance> <path>... [--from <instance>] [--pack <dir>]` | Track more paths |
 | `link <instance> [branch]` | Bind an instance to an existing branch |
 | `status` | Tracked instances, playtime, a fork in progress |
 | `continue` / `abort` | Finish or undo a fork with conflicts |
