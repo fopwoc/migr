@@ -30,7 +30,13 @@ pub enum Command {
         track: Vec<TrackedPath>,
     },
     /// Carry your files from an old instance into a fresh one of a newer pack version.
-    Fork { from: InstanceId, to: InstanceId },
+    Fork {
+        from: InstanceId,
+        to: InstanceId,
+        /// Where you and the pack both changed a file, keep your whole file instead of stopping.
+        #[arg(short, long)]
+        force: bool,
+    },
     /// Start tracking more paths of an instance.
     Track {
         instance: InstanceId,

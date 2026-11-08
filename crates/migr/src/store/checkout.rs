@@ -140,6 +140,29 @@ impl<'s> Checkout<'s> {
         Ok(MergeOutcome::Conflicts(conflicts))
     }
 
+    /// Settles conflicted `paths` with `commit`'s whole files, on disk and in the index;
+    /// a path `commit` doesn't have is removed.
+    pub fn resolve_with(&self, commit: &str, paths: &[String]) -> Result<()> {
+        let mut args = vec!["ls-tree", "-r", "--name-only", commit, "--"];
+        args.extend(paths.iter().map(String::as_str));
+        let listed = self.git.run(args)?;
+        let (present, gone): (Vec<&str>, Vec<&str>) = paths
+            .iter()
+            .map(String::as_str)
+            .partition(|path| listed.lines().any(|line| line == *path));
+        if !present.is_empty() {
+            let mut args = vec!["checkout", commit, "--"];
+            args.extend(present);
+            self.git.run(args)?;
+        }
+        if !gone.is_empty() {
+            let mut args = vec!["rm", "--quiet", "--force", "--"];
+            args.extend(gone);
+            self.git.run(args)?;
+        }
+        Ok(())
+    }
+
     pub fn conflicts(&self) -> Result<Vec<String>> {
         let listed = self.git.run(["diff", "--name-only", "--diff-filter=U"])?;
         Ok(listed.lines().map(str::to_owned).collect())

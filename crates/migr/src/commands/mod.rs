@@ -34,7 +34,7 @@ pub fn run(command: Command) -> Result<()> {
             pack,
             track,
         } => new::run(&context, &instance, pack.as_deref(), track),
-        Command::Fork { from, to } => fork::run(&context, &from, &to),
+        Command::Fork { from, to, force } => fork::run(&context, &from, &to, force),
         Command::Track {
             instance,
             paths,

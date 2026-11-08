@@ -84,7 +84,16 @@ impl Machine {
     }
 
     fn fork(&self, from: &str, to: &str) -> anyhow::Result<()> {
-        fork::run(&self.context, &from.parse().unwrap(), &to.parse().unwrap())
+        self.fork_with(from, to, false)
+    }
+
+    fn fork_with(&self, from: &str, to: &str, force: bool) -> anyhow::Result<()> {
+        fork::run(
+            &self.context,
+            &from.parse().unwrap(),
+            &to.parse().unwrap(),
+            force,
+        )
     }
 }
 
@@ -174,6 +183,31 @@ fn conflicts_block_the_launch_until_continue() {
         PACK_OPTIONS.replace("a=1", "a=both")
     );
     assert!(machine.cfg("new").contains("totalTimePlayed=100"));
+}
+
+#[test]
+fn forced_fork_keeps_your_whole_file_on_conflicts() {
+    let machine = Machine::new();
+    machine.init(None);
+    machine.instance("old", 0, &[("options.txt", PACK_OPTIONS)]);
+    machine.new_instance("old");
+    let mine = PACK_OPTIONS.replace("a=1", "a=mine");
+    machine.write("old", "options.txt", &mine);
+    machine.instance(
+        "new",
+        0,
+        &[(
+            "options.txt",
+            &PACK_OPTIONS
+                .replace("a=1", "a=pack")
+                .replace("z=1", "z=pack"),
+        )],
+    );
+
+    machine.fork_with("old", "new", true).unwrap();
+
+    assert_eq!(machine.read("new", "options.txt"), mine);
+    machine.hook(HookPhase::Pre, "new").unwrap();
 }
 
 #[test]

@@ -6,7 +6,7 @@ use crate::{
     store::{MergeOutcome, PendingFork, TrackedPath},
 };
 
-pub fn run(context: &Context, from: &InstanceId, to: &InstanceId) -> Result<()> {
+pub fn run(context: &Context, from: &InstanceId, to: &InstanceId, force: bool) -> Result<()> {
     let prism = context.prism()?;
     prism.ensure_closed()?;
     let store = context.store()?;
@@ -47,7 +47,21 @@ pub fn run(context: &Context, from: &InstanceId, to: &InstanceId) -> Result<()> 
     checkout.adopt_head()?;
     let previous_hooks = context.install_hooks(&target)?;
 
-    match checkout.merge(&from_branch.head(), &format!("fork {from} into {to}")) {
+    let merged = checkout
+        .merge(&from_branch.head(), &format!("fork {from} into {to}"))
+        .and_then(|outcome| match outcome {
+            MergeOutcome::Conflicts(paths) if force => {
+                checkout.resolve_with(&from_branch.head(), &paths)?;
+                checkout.conclude_merge()?;
+                println!("kept your version of:");
+                for path in &paths {
+                    println!("  {path}");
+                }
+                Ok(MergeOutcome::Clean)
+            }
+            outcome => Ok(outcome),
+        });
+    match merged {
         Ok(MergeOutcome::Clean) => {
             println!("forked {from} into {to}");
             super::report_playtime(context.carry_playtime(from, &target)?);

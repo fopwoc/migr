@@ -43,7 +43,7 @@ By default migr tracks `options.txt`, `optionsnf.txt`, `localconfig.cfg` and `se
 2. Run `migr fork <old instance> <new instance>`.
 3. Launch the new instance.
 
-If the fork stops on conflicts, edit the files it lists, then run `migr continue`. To undo the fork entirely, run `migr abort`.
+If the fork stops on conflicts, edit the files it lists, then run `migr continue`. To undo the fork entirely, run `migr abort`. To skip conflicts and keep your whole file wherever both sides changed it, fork with `--force`.
 
 Forgot to track something? From the new instance, take your version of it from the old one:
 
@@ -69,7 +69,7 @@ Sync is best effort. Being offline never stops the game; the push is retried aft
 |---|---|
 | `init [remote]` | Create the repository, or clone it |
 | `new <instance>` | Start tracking an instance |
-| `fork <from> <to>` | Carry your files into a new pack version |
+| `fork <from> <to> [--force]` | Carry your files into a new pack version |
 | `track <instance> <path>... [--from <instance>] [--pack <dir>]` | Track more paths |
 | `link <instance> [branch]` | Bind an instance to an existing branch |
 | `status` | Tracked instances, playtime, a fork in progress |

@@ -34,8 +34,12 @@ impl TryFrom<String> for InstanceId {
 impl FromStr for InstanceId {
     type Err = anyhow::Error;
 
+    /// Forgives what a shell hands over for a folder: `./name/` from tab completion,
+    /// and `name\ with\ spaces` escaped again inside quotes.
     fn from_str(value: &str) -> Result<Self> {
-        value.to_owned().try_into()
+        let trimmed = value.trim_end_matches('/');
+        let name = trimmed.strip_prefix("./").unwrap_or(trimmed);
+        name.replace("\\ ", " ").try_into()
     }
 }
 
@@ -84,5 +88,26 @@ impl Instance {
 
     pub(super) fn is_instance_dir(dir: &Path) -> bool {
         dir.join("instance.cfg").is_file()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InstanceId;
+
+    #[test]
+    fn shell_spellings_of_a_folder_parse_to_its_name() {
+        for input in [
+            "GT New Horizons",
+            "GT New Horizons/",
+            "./GT New Horizons/",
+            r"GT\ New\ Horizons",
+        ] {
+            let id: InstanceId = input.parse().unwrap();
+            assert_eq!(id.as_str(), "GT New Horizons", "{input}");
+        }
+        for input in ["", "/", "./", "a/b", "../a"] {
+            assert!(input.parse::<InstanceId>().is_err(), "{input}");
+        }
     }
 }
